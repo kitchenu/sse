@@ -1,12 +1,22 @@
 {
+    "name": "kitchenu/ssel",
+    "type": "library",
+    "description": "PHP Server-Sent Events library",
+    "keywords": ["SSE", "Server-Sent Events"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "kitchenu"
+        }
+    ],
     "require": {
         "php": ">=5.5.0",
-        "guzzlehttp/guzzle": "^6.0",
+        "guzzlehttp/psr7": "^1.4.0",
         "react/event-loop": "^0.5"
     },
     "autoload": {
         "psr-4": {
-            "Kitchenu\\Sse\\": "src/"
+            "Ssel\\": "src/"
         }
     }
 }

@@ -1,16 +1,20 @@
 <?php
 
-namespace Kitchenu\Sse;
+namespace Ssel;
 
-use Kitchenu\Sse\Event\EventInterface as Event;
-use Kitchenu\Sse\Event\CallableEvent;
+use DateTime;
+use Ssel\Event\EventInterface;
+use Ssel\Event\CallableTimerEvent;
+use Ssel\Event\CallableStartEvent;
 use GuzzleHttp\Psr7\Response;
 use React\EventLoop\LoopInterface;
 use React\EventLoop\Factory;
-use DateTime;
 
-class SSE
+class App
 {
+    /**
+     * @var array
+     */
     protected $settings = [
         'execLimit' => 60,
         'retryTime' => 1,
@@ -44,7 +48,12 @@ class SSE
     protected $timers = [];
 
     /**
-     * SSE constructor.
+     * @var array
+     */
+    protected $events = [];
+
+    /**
+     * Create new sse
      *
      * @param $settings
      * @param $headers
@@ -57,88 +66,109 @@ class SSE
         $this->loop = Factory::create();
     }
 
-    protected function createResponse(array $headers)
+    /**
+     *
+     * @param array $headers
+     * @return Response
+     */
+    protected function createResponse(array $headers = [])
     {
-        return new Response(200, [
+        $response = new Response(200, [
             'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
+            'Cache-Control' => 'no-cache'
         ] + $headers);
+
+        if (isset($_SERVER['SERVER_SOFTWARE']) && preg_match('/^nginx\//', $_SERVER['SERVER_SOFTWARE'])) {
+            return $response->withHeader('X-Accel-Buffering', 'no');
+        }
+
+        return $response;
     }
 
     /**
-     * Add a event handler
-     * @param string $name the event name
-     * @param Event|Closure $event the event handler
+     * Add timer event handler
+     *
+     * @param string   $name the event name
+     * @param callable $callback
+     * @param float    $interval
+     * @param boolean  $periodic
      * @return void
      */
-    public function addTimerEvent($name, $event, $interval = 5, $periodic = true)
+    public function addTimerEvent($name, callable $callback, $interval = 5, $periodic = true)
     {
-        if ($event instanceof Event) {
-            $this->timers[$name] = $this->loop->addPeriodicTimer($interval, function () use ($name, $event) {
-                if ($event->ready($this->startedTime)) {
-                    $this->sendEvent($event->data(), $event->name());
-                }
-            });
-        } elseif (is_callable($event)) {
-            $this->timers[$name] = $this->loop->addPeriodicTimer($interval, function () use ($name, $event) {
-                $data = call_user_func($event, $this->startedTime);
-                if (!is_null($data)) {
-                    $this->sendEvent($name, $data);
-                }
-            });
-        }
+        $this->events[$name] = new CallableTimerEvent($name, $interval, $callback);
     }
 
+    /**
+     * Add start event handler
+     *
+     * @param string   $name the event name
+     * @param callable $callback
+     * @return void
+     */
+    public function addStartEvent($name, callable $callback)
+    {
+        $this->events[$name] = new CallableStartEvent($name, $callback);
+    }
 
     /**
-     * @param string $name
-     * @param string $data
+     * Add start event handler
+     *
+     * @param string         $name the event name
+     * @param EventInterface $event
+     * @return void
+     */
+    public function addEvent($name, EventInterface $event)
+    {
+        $this->event[$name] = $event; 
+    }
+
+    /**
+     * @param EventInterface $event
      * @return string
      */
-    protected function sendEvent($name, $data)
+    protected function sendEvent($event)
     {
         $message = '';
 
         if ($this->settings['sendEventName']) {
-            $message .= "\nevent: $name";
+            $message .= "\nevent: {$event->name()}";
         }
 
-        $message .= "\ndata: $data\nid: {$this->eventId}\n";
+        $message .= "\ndata: {$event->data()}\nid: {$this->eventId}\n";
 
-        echo $message;
+        $this->render($message);
 
         $this->eventId++;
     }
 
     /**
-     * remove a event handler
+     * remove timer event handler
      *
      * @param string $name the event name
      * @return void
      */
-    public function removeTimerEvent($name, $event, $interval = 5, $periodic = true)
+    public function removeEvent($name)
     {
-        $this->loop->cancelTimer($this->timers[$name]);
-        unset($this->timers[$name]);
+        unset($this->events[$name]);
     }
 
     /**
-     * remove a event handler
      *
      * @return void
      */
     public function run()
     {
-        $this->init();
+        $this->setup();
         $this->loop->run();
     }
 
     /**
-     * Initial System
+     * Setup System
      *
      * @return void
      */
-    protected function init()
+    protected function setup()
     {
         if ($limit = $this->settings['execLimit']) {
             $this->loop->addTimer($limit, function () {
@@ -153,31 +183,44 @@ class SSE
 
             if ($this->settings['retryTime']) {
                 $retryTime = $this->settings['retryTime'] * 1000;
-                echo "retry: $retryTime\n";
+                $this->render("retry: $retryTime\n");
             }
         });
 
+        foreach ($this->events as $event) {
+            switch ($event->type()) {
+                case EventInterface::TYPE_TIMER:
+                    $this->loop->addPeriodicTimer($event->interval(), function () use ($event) {
+                        if ($event->ready()) {
+                            $this->sendEvent($event);
+                        }
+                    });
+                    break;
+                case EventInterface::TYPE_START:
+                    $this->loop->futureTick(function () use ($event) {
+                        if ($event->ready()) {
+                            $this->sendEvent($event);
+                        }
+                    });
+                    break;
+            }
+        }
+
         if ($interval = $this->settings['keepAliveInterval']) {
             $this->loop->addPeriodicTimer($interval, function () {
-                echo "\n: {$this->keepMessage}\n";
+                $this->render("\n: {$this->keepMessage}\n");
             }); 
         }
 
-//        @set_time_limit(0); // Disable time limit
-//
-//        // Prevent buffering
-//        if(function_exists('apache_setenv')){
-//            @apache_setenv('no-gzip', 1);
-//        }
-//
-//        @ini_set('zlib.output_compression', 0);
-//        @ini_set('implicit_flush', 1);
-//
-//        while (ob_get_level() != 0) {
-//            ob_end_flush();
-//        }
-//        ob_implicit_flush(1);
+        @ob_end_clean();
+    }
 
+    protected function render($message)
+    {
+        echo $message;
+
+        @ob_flush();
+        @flush();
     }
 
     /**
@@ -214,6 +257,10 @@ class SSE
         }
     }
 
+    /**
+     * @param LoopInterface|null
+     * @return mixed
+     */
     public function loop($loop = null)
     {
         if (!$loop instanceof LoopInterface) {
@@ -223,6 +270,10 @@ class SSE
         $this->loop = $loop;
     }
 
+    /**
+     * @param string|null
+     * @return mixed
+     */
     public function keepMessage($message = null)
     {
         if (is_null($message)) {
@@ -230,5 +281,13 @@ class SSE
         }
 
         $this->keepMessage = (string) $message;
+    }
+
+    /**
+     * @return Response
+     */
+    public function getResponse()
+    {
+        return $this->response;
     }
 }

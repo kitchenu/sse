@@ -1,6 +1,6 @@
 <?php
 
-namespace Kitchenu\Sse\Event;
+namespace Ssel\Event;
 
 class CallableEvent extends AbstractEvent
 {
@@ -21,10 +21,20 @@ class CallableEvent extends AbstractEvent
      *
      * @return bool
      */
-    public function check()
+    public function ready()
     {
         $this->data = $this->callback->__invoke();
 
         return $this->data != null ? true : false;
+    }
+
+    public function name()
+    {
+        return $this->name;
+    }
+
+    public function data()
+    {
+        return $this->data;
     }
 }
