@@ -14,6 +14,16 @@ abstract class TimerEvent implements EventInterface
         $this->interval = $interval;
     }
 
+    public function ready()
+    {
+        return true;
+    }
+
+    public function name()
+    {
+        return $this->name;
+    }
+
     public function interval()
     {
         return $this->interval;

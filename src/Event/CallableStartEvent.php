@@ -2,7 +2,7 @@
 
 namespace Ssel\Event;
 
-class CallableStartEvent extends TimerEvent
+class CallableStartEvent extends StartEvent
 {
     use CallableTrait;
 

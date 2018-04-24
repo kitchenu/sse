@@ -3,12 +3,13 @@
 namespace Ssel;
 
 use DateTime;
-use Ssel\Event\EventInterface;
 use Ssel\Event\CallableTimerEvent;
 use Ssel\Event\CallableStartEvent;
+use Ssel\Event\EventInterface;
 use GuzzleHttp\Psr7\Response;
 use React\EventLoop\LoopInterface;
 use React\EventLoop\Factory;
+use Ssel\Exception\EventNotFoundException;
 
 class App
 {
@@ -73,16 +74,18 @@ class App
      */
     protected function createResponse(array $headers = [])
     {
-        $response = new Response(200, [
+        $headers = array_merge($headers, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache'
-        ] + $headers);
+        ]); 
 
         if (isset($_SERVER['SERVER_SOFTWARE']) && preg_match('/^nginx\//', $_SERVER['SERVER_SOFTWARE'])) {
-            return $response->withHeader('X-Accel-Buffering', 'no');
+            $headers = array_merge($headers, [
+                'X-Accel-Buffering' => 'no',
+            ]); 
         }
 
-        return $response;
+        return new Response(200, $headers);
     }
 
     /**
@@ -114,32 +117,29 @@ class App
     /**
      * Add start event handler
      *
-     * @param string         $name the event name
-     * @param EventInterface $event
-     * @return void
+     * @param string|EventInterface[]|null $name the event name
+     * @param EventInterface|null          $event
+     * @return mixed
      */
-    public function addEvent($name, EventInterface $event)
+    public function events($name  = null, $event = null)
     {
-        $this->event[$name] = $event; 
-    }
+        if (is_null($name)) {
+            return $this->events;
+        } elseif (is_array($name)) {
+            foreach ($name as $key => $event) {
+                if ($event instanceof EventInterface) {
+                    $this->events[$key] = $event;
+                }
+            }
+        } elseif (is_null($event)) {
+            if (isset($this->events[$name])) {
+                return $this->events[$name];
+            }
 
-    /**
-     * @param EventInterface $event
-     * @return string
-     */
-    protected function sendEvent($event)
-    {
-        $message = '';
-
-        if ($this->settings['sendEventName']) {
-            $message .= "\nevent: {$event->name()}";
+            throw new EventNotFoundException(sprintf('Event "%s" is not defined.', $name));
+        } elseif ($event instanceof EventInterface) {
+            $this->events[$name] = $event;
         }
-
-        $message .= "\ndata: {$event->data()}\nid: {$this->eventId}\n";
-
-        $this->render($message);
-
-        $this->eventId++;
     }
 
     /**
@@ -164,6 +164,25 @@ class App
     }
 
     /**
+     * @param EventInterface $event
+     * @return string
+     */
+    protected function sendEvent($event)
+    {
+        $message = '';
+
+        if ($this->settings['sendEventName']) {
+            $message .= "\nevent: {$event->name()}";
+        }
+
+        $message .= "\ndata: {$event->data()}\nid: {$this->eventId}\n";
+
+        $this->render($message);
+
+        $this->eventId++;
+    }
+
+    /**
      * Setup System
      *
      * @return void
@@ -173,6 +192,7 @@ class App
         if ($limit = $this->settings['execLimit']) {
             $this->loop->addTimer($limit, function () {
                 $this->loop->stop();
+                ob_start();              
             });
         }
 
@@ -242,19 +262,30 @@ class App
         ));
     }
 
+    public function setHeader($name, $value)
+    {
+        $this->response = $this->response->withHeader($name, $value);
+    } 
+
     public function settings($key = null, $value = null)
     {
         if (is_null($key)) {
             return $this->settings;
-        }
-
-        if (is_array($key)) {
+        } elseif (is_array($key)) {
             $this->settings = array_merge($this->settings, $key);
         } elseif (is_null($value)) {
             return $this->settings[$key];
         } else {
             $this->settings[$key] = $value;
         }
+    }
+
+    /**
+     * @return Response
+     */
+    public function response()
+    {
+        return $this->response;
     }
 
     /**
@@ -281,13 +312,5 @@ class App
         }
 
         $this->keepMessage = (string) $message;
-    }
-
-    /**
-     * @return Response
-     */
-    public function getResponse()
-    {
-        return $this->response;
     }
 }

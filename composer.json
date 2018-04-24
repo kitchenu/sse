@@ -14,6 +14,9 @@
         "guzzlehttp/psr7": "^1.4.0",
         "react/event-loop": "^0.5"
     },
+    "require-dev": {
+        "phpunit/phpunit": "~4.8.35 || ^5.7 || ^6.4"
+    },
     "autoload": {
         "psr-4": {
             "Ssel\\": "src/"
