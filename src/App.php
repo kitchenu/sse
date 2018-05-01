@@ -54,8 +54,6 @@ class App
     protected $events = [];
 
     /**
-     * Create new sse
-     *
      * @param $settings
      * @param $headers
      */
@@ -68,6 +66,7 @@ class App
     }
 
     /**
+     * Create Response instance
      *
      * @param array $headers
      * @return Response
@@ -115,11 +114,12 @@ class App
     }
 
     /**
-     * Add start event handler
+     * Access events
      *
      * @param string|EventInterface[]|null $name the event name
      * @param EventInterface|null          $event
      * @return mixed
+     * @throws EventNotFoundException
      */
     public function events($name  = null, $event = null)
     {
@@ -154,6 +154,7 @@ class App
     }
 
     /**
+     * Run the sse
      *
      * @return void
      */
@@ -161,25 +162,6 @@ class App
     {
         $this->setup();
         $this->loop->run();
-    }
-
-    /**
-     * @param EventInterface $event
-     * @return string
-     */
-    protected function sendEvent($event)
-    {
-        $message = '';
-
-        if ($this->settings['sendEventName']) {
-            $message .= "\nevent: {$event->name()}";
-        }
-
-        $message .= "\ndata: {$event->data()}\nid: {$this->eventId}\n";
-
-        $this->render($message);
-
-        $this->eventId++;
     }
 
     /**
@@ -235,6 +217,32 @@ class App
         @ob_end_clean();
     }
 
+    /**
+     * Send event
+     *
+     * @param EventInterface $event
+     * @return string
+     */
+    protected function sendEvent($event)
+    {
+        $message = '';
+
+        if ($this->settings['sendEventName']) {
+            $message .= "\nevent: {$event->name()}";
+        }
+
+        $message .= "\ndata: {$event->data()}\nid: {$this->eventId}\n";
+
+        $this->render($message);
+
+        $this->eventId++;
+    }
+
+    /**
+     * Render event message
+     *
+     * @param string $message
+     */
     protected function render($message)
     {
         echo $message;
@@ -244,7 +252,7 @@ class App
     }
 
     /**
-     * @return void
+     * Send heaer
      */
     protected function sendHeader()
     {
@@ -262,11 +270,24 @@ class App
         ));
     }
 
+    /**
+     * Set Header
+     *
+     * @param string $name
+     * @param string $value
+     */
     public function setHeader($name, $value)
     {
         $this->response = $this->response->withHeader($name, $value);
     } 
 
+    /**
+     * Undocumented function
+     *
+     * @param mixed $key
+     * @param mixed $value
+     * @return mixed
+     */
     public function settings($key = null, $value = null)
     {
         if (is_null($key)) {
