@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/kitchenu/ssel.svg?branch=master)](https://travis-ci.org/kitchenu/ssel)
 [![License](https://poser.pugx.org/kitchenu/ssel/license)](https://packagist.org/packages/kitchenu/ssel)
 
-ChatWork API Client for PHP.
+PHP Server-Sent Events library.
 
 ## Installation
 
