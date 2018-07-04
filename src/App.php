@@ -205,8 +205,25 @@ class App
                         }
                     });
                     break;
+                case EventInterface::TYPE_SUB:
+                    $subEvents[] = $event;
+                    break;
             }
         }
+
+        $this->redisClient->then(function (Client $client) use ($subEvents) {
+            foreach ($subEvents as $event) {
+                $client->subscribe($event->channel());
+            }
+
+            $client->on('message', function ($channel, $payload) use ($subEvents) {
+                foreach ($subEvents as $ch => $event) {
+                    if ($event->ready()) {
+                        $this->sendEvent($event->name(), $event->data());
+                    }
+                }
+            });
+        });
 
         if ($interval = $this->settings['keepAliveInterval']) {
             $this->loop->addPeriodicTimer($interval, function () {
