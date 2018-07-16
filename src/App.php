@@ -54,15 +54,21 @@ class App
     protected $events = [];
 
     /**
+     * @var Clue\React\Redis\Client
+     */
+    protected $redisClient;
+
+    /**
      * @param $settings
      * @param $headers
      */
-    public function __construct($settings = [], $headers = [])
+    public function __construct($settings = [], $headers = [], $redisClient = null)
     {
         $this->settings = array_merge($this->settings, $settings);
         $this->eventId = isset($_SERVER['HTTP_LAST_EVENT_ID']) ? (int) $_SERVER['HTTP_LAST_EVENT_ID'] : 1;
         $this->response = $this->createResponse($headers);
         $this->loop = Factory::create();
+        $this->redisClient = $redisClient;
     }
 
     /**
@@ -211,19 +217,21 @@ class App
             }
         }
 
-        $this->redisClient->then(function (Client $client) use ($subEvents) {
-            foreach ($subEvents as $event) {
-                $client->subscribe($event->channel());
-            }
-
-            $client->on('message', function ($channel, $payload) use ($subEvents) {
-                foreach ($subEvents as $ch => $event) {
-                    if ($event->ready()) {
-                        $this->sendEvent($event->name(), $event->data());
-                    }
+        if (get_class($this->redisClient) == 'Clue\React\Redis\Client') {
+            $this->redisClient->then(function (Client $client) use ($subEvents) {
+                foreach ($subEvents as $event) {
+                    $client->subscribe($event->channel());
                 }
+    
+                $client->on('message', function ($channel, $payload) use ($subEvents) {
+                    foreach ($subEvents as $ch => $event) {
+                        if ($event->ready()) {
+                            $this->sendEvent($event->name(), $event->data());
+                        }
+                    }
+                });
             });
-        });
+        }
 
         if ($interval = $this->settings['keepAliveInterval']) {
             $this->loop->addPeriodicTimer($interval, function () {
