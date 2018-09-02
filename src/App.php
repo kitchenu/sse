@@ -217,7 +217,7 @@ class App
             }
         }
 
-        if (get_class($this->redisClient) == 'Clue\React\Redis\Client') {
+        if (is_object($this->redisClient)) {
             $this->redisClient->then(function (Client $client) use ($subEvents) {
                 foreach ($subEvents as $event) {
                     $client->subscribe($event->channel());
